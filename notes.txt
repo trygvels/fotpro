@@ -1,0 +1,171 @@
+generer fotballag fra en gruppe spillere avhenging av motstandernes nivå.
+
+7 posisjoner - 7 grupper med 3-6 spillere som rangeres
+
+"Spillere skal ikke spille sammen for ofte"
+om man har 3 spelare på en position så bör de fördelas efter motstånd men också utifrån att de inte skall spelas tillsammans för ofta
+
+[input]
+spillere + 7 posisjoner med rang.
+motstanderlag + 1-16 rangering
+kamper
+optional: Tidligere kamper
+
+[output]
+Oversikt over alle kamper
+
+
+
+Load 7 txt filer med forskjellig lengde
+load lag med 1-16
+
+sum av alle de beste i hver gruppe = 1, sum av alle de dårligste = 16, alle andre i gruppen får tildelt 16/n.
+sum av alle beste /16
+
+iterer over hver motstander og generere lag likest motrang
+
+(Vekting? Hver spiller mister vekting for hver kamp den blir valgt til (Pluss 1 for hver kamp, [vekting 1/n]))
+3 2 4 1 2 3 5
+
+
+""""""
+Alternativ
+""""""
+Sett opp lag i stigende rekkefølge.
+000000
+111111
+222222
+333333 osv.
+stokk om til folk får spillt med hverandre.
+sørg for at "Scoren" holdes innenfor en range.
+Proposal (metropolis)
+
+
+[Metropolis]
+Sett opp lag i stigende rekkefølge.
+endre for å tilfredsstille krav: foreslå endring
+
+
+while convergence=False:
+
+[Slutt]
+Legg til 14 per lag
+For første genererte lag, kopier rader
+
+[Backup]
+import numpy as np
+from random import randint, choice
+from collections import Counter
+import sys
+
+# Parameters
+if len(sys.argv) < 10:
+    print "You are using it wrong. Try:"
+    print "fotball.py [sigma, f.ex. 2.0] [opponents.txt] [pos1.txt] [pos2.txt] [pos3.txt] [pos4.txt] [pos5.txt] [pos6.txt] [pos7.txt]"
+    sys.exit()
+
+sigma = float(sys.argv[1]) # 2.
+variance=2.
+num_pos= 7
+
+
+# Loading player names and lengths of groups
+names=[]
+lens=[]
+for i in range(7):
+    txt=np.loadtxt(str(sys.argv[i+3]),dtype=np.str)
+    names.append(txt)                # nested list of names
+    lens.append(len(txt))           # create list of group lengths
+# Opponent team
+opponents = np.loadtxt(sys.argv[2], dtype=np.str)
+num_opp=len(opponents)
+names = np.asarray(names)
+
+# Order in team setups from best to worst
+def make_index_matrix(dim, max_values):
+    assert len(max_values) == dim[0]
+    out = np.zeros(dim)
+    j = 0
+    for k, mv in enumerate(max_values):
+        assert mv > 0
+        a = np.arange(mv).repeat(np.floor(dim[1]/mv))
+
+        if len(a) < dim[1]:
+            #r = np.ones(mv)
+
+            r = np.arange(mv)
+            #np.random.shuffle(r)
+            #print r
+            a = np.concatenate((a, r))
+
+        out[k,:] = a[:dim[1]]
+
+    return out
+matches = make_index_matrix((num_pos,num_opp),lens)
+matches=matches[:,np.argsort(np.sum(matches,axis=0))] # sort by sum of columns
+
+newmatch = np.zeros_like(matches)
+count = 0
+convergence = False
+rankss = np.linspace(0, np.max(matches)*num_pos, len(matches[i,:]))
+
+print "******************"
+print "ORIGINAL MATCHES"
+print matches
+
+while convergence==False:
+    i = randint(0,num_pos-1) # pick random position
+    a = randint(0,len(matches[i,:])-1) # Pick random player in that position
+    b = randint(0,len(matches[i,:])-1) # pick random player in that position
+    if a == b:
+        continue
+
+    newmatch[:,:] = matches[:,:] # new team proposal
+
+    player_b = matches[i, b] # Switch position
+    player_a = matches[i, a] # Switch position
+    newmatch[i, a] = player_b
+    newmatch[i, b] = player_a
+
+    if names[i][int(player_b)] == names[i][int(player_a)]:
+        continue
+
+    rank_a = np.sum(newmatch[:,a]) # rank of new game a
+    rank_b = np.sum(newmatch[:,b]) # rank of new game b
+
+    # the rank of each opponent team is 0 to num_opp
+    if rank_a > (rankss[a] - sigma) and rank_a < (rankss[a]+sigma):
+        if rank_b > (rankss[b] - sigma) and rank_b < (rankss[b] + sigma):
+
+            # Make array of names
+            a = np.chararray((num_pos,num_opp),itemsize=30)
+            for i in range(num_pos):
+                for j in range(num_opp):
+                    a[i,j] = names[i][int(matches[i,j])]
+
+            # checkfor duplicate names in game
+            for i in range(num_opp):
+                if 2 not in Counter(a[:,i]).values():
+                    matches[:,:] = newmatch[:,:]
+                else:
+                    continue
+
+            # Convergence check, amount of games is redundant.. But whatevere
+            lol = np.var(Counter(a.flatten()).values())
+            if count > 10000 and lol < variance:
+                convergence = True
+    #print count
+    count+=1
+
+matches=matches[:,np.argsort(np.sum(matches,axis=0))] # sort by sum of columns
+print "******************"
+print "FINAL MATCHES"
+print matches
+
+# Making final array of names
+a = np.chararray((num_pos,num_opp),itemsize=30)
+for i in range(num_pos):
+    for j in range(num_opp):
+        a[i,j] = names[i][int(matches[i,j])]
+
+print Counter(a.flatten())
